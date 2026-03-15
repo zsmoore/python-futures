@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cfuture"
+version = "0.1.0"
+description = "CompletableFuture-style futures with true GIL-free parallelism via sub-interpreters"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+dev = ["pytest", "flake8"]
+
+[project.entry-points."flake8.extension"]
+CFU = "cfuture.lint:CfutureLintPlugin"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cfuture*"]
