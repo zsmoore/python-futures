@@ -126,3 +126,44 @@ def test_non_transferable_raises_at_registration():
     finally:
         sock.close()
         pool.shutdown()
+
+
+# ── shared= startup injection tests ──────────────────────────────────────────
+
+def test_shared_dict_accepted():
+    """shared= dict is accepted without error."""
+    pool = cfuture.ThreadPoolExecutor(
+        workers=1,
+        shared={"config": {"key": "value"}},
+    )
+    f = pool.submit(lambda: 42)
+    assert f.result(timeout=5.0) == 42
+    pool.shutdown()
+
+
+def test_shared_string_accepted():
+    """shared= with string value is accepted without error."""
+    pool = cfuture.ThreadPoolExecutor(
+        workers=2,
+        shared={"greeting": "hello"},
+    )
+    f = pool.submit(lambda: "world")
+    assert f.result(timeout=5.0) == "world"
+    pool.shutdown()
+
+
+def test_shared_numeric_accepted():
+    """shared= with numeric value is accepted without error."""
+    pool = cfuture.ThreadPoolExecutor(
+        workers=1,
+        shared={"scale": 3.14, "count": 10},
+    )
+    f = pool.submit(lambda: 1)
+    assert f.result(timeout=5.0) == 1
+    pool.shutdown()
+
+
+def test_shared_must_be_dict():
+    """shared= must be a dict, not a list."""
+    with pytest.raises(TypeError):
+        cfuture.ThreadPoolExecutor(workers=1, shared=["not", "a", "dict"])
