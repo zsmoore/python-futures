@@ -16,13 +16,16 @@ CFLAGS  := -std=c11 -Wall -Wextra -g \
 
 LDFLAGS := -F$(PY_FRAMEWORK) -framework Python -pthread
 
-TESTS   := test_shared_value
+TESTS   := test_shared_value test_future_internals
 
 .PHONY: all run clean
 
 all: $(TESTS)
 
 test_shared_value: test_shared_value.c unity.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+test_future_internals: test_future_internals.c unity.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 run: all
