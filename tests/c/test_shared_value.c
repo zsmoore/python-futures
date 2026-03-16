@@ -3,18 +3,16 @@
  *
  * Unity unit tests for the SharedValue encode/decode/copy/free layer.
  *
- * Strategy: #include the implementation source directly so we can reach all
- * static functions without changing the production code. We suppress the
- * PyMODINIT_FUNC symbol to avoid a duplicate-symbol link error.
+ * Strategy: #include the implementation sources directly so we can reach all
+ * non-static functions without a separate compilation step.
  */
 
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "unity.h"
 
-#define PyInit__cfuture PyInit__cfuture_HIDDEN
-#include "../../cfuture/_cfuture.c"
-#undef PyInit__cfuture
+#include "../../cfuture/_cfuture_shared_value.c"
+#include "../../cfuture/_cfuture_pickled.c"
 
 /* -------------------------------------------------------------------------
  * Unity required setUp / tearDown (called before/after every test)
