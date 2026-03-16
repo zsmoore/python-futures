@@ -7,7 +7,6 @@ signatures.  This file shows both styles side by side so it's clear when
 each is appropriate.
 """
 from typing import Any
-import cfuture
 from cfuture import Future, ThreadPoolExecutor
 
 
