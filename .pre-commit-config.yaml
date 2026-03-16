@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.2.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [flake8-bugbear]
+        args: [cfuture/, tests/, examples/]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args: [cfuture/]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        language: system
+        entry: .venv/bin/python -m pytest tests/ -q --tb=short
+        pass_filenames: false
+        always_run: true
+      - id: c-tests
+        name: C Unity tests
+        language: system
+        entry: bash -c "cd tests/c && make run"
+        pass_filenames: false
+        always_run: true
