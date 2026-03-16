@@ -11,13 +11,22 @@ Ships as:
 """
 
 import ast
+import builtins
 import sys
 from typing import List, Tuple, Generator
 
 
 CHECKED_METHODS = {"then", "except_", "finally_", "submit"}
-CFU001 = "CFU001 callback captures '{name}' from outer scope — pass via deps=[{name}] instead"
-CFU002 = "CFU002 xi-protocol class '{name}' defined inside a function — move to module level so the worker can resolve it"
+CFU001 = (
+    "CFU001 callback captures '{name}' from outer scope"
+    " — pass via deps=[{name}] instead"
+)
+CFU002 = (
+    "CFU002 xi-protocol class '{name}' defined inside a function"
+    " — move to module level so the worker can resolve it"
+)
+
+_BUILTINS: frozenset = frozenset(dir(builtins)) | {"True", "False", "None"}
 
 
 def _collect_names_in_expr(node: ast.expr) -> List[str]:
@@ -59,7 +68,10 @@ def _has_xi_protocol(cls_node: ast.ClassDef) -> bool:
         if name == "xi_dataclass":
             return True
     for node in ast.walk(cls_node):
-        if isinstance(node, ast.FunctionDef) and node.name in ("__xi_encode__", "__xi_decode__"):
+        if isinstance(node, ast.FunctionDef) and node.name in (
+            "__xi_encode__",
+            "__xi_decode__",
+        ):
             return True
     return False
 
@@ -97,11 +109,7 @@ def check_file(source: str, filename: str = "<unknown>") -> List[Tuple[int, int,
         lambda_params = _get_lambda_params(cb_arg)
         deps_names = _get_deps_names(node)
         body_names = set(_collect_names_in_expr(cb_arg.body))
-        free_names = body_names - lambda_params - deps_names
-
-        builtins = set(dir(__builtins__)) if isinstance(__builtins__, dict) else set(dir(__builtins__))
-        builtins.update({"True", "False", "None"})
-        free_names -= builtins
+        free_names = body_names - lambda_params - deps_names - _BUILTINS
 
         for name in sorted(free_names):
             errors.append((cb_arg.lineno, cb_arg.col_offset, CFU001.format(name=name)))
