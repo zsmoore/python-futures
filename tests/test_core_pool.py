@@ -19,10 +19,9 @@ def test_pool_context_manager_enter_exit():
 
 
 def test_pool_min_workers_clamp():
-    pool = cfuture.ThreadPoolExecutor(workers=0)
-    f = pool.submit(lambda: 7)
-    assert f.result(timeout=5.0) == 7
-    pool.shutdown()
+    with cfuture.ThreadPoolExecutor(workers=0) as pool:
+        f = pool.submit(lambda: 7)
+        assert f.result(timeout=5.0) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -135,14 +134,13 @@ def test_many_tasks_correct_results():
 
 def test_parallel_workers():
     """All workers run in parallel — measure total time."""
-    pool = cfuture.ThreadPoolExecutor(workers=4)
-    start = time.time()
-    futures = [pool.submit(lambda: time.sleep(0.3)) for _ in range(4)]
-    for ftr in futures:
-        ftr.result(timeout=5.0)
-    elapsed = time.time() - start
-    assert elapsed < 1.0, f"Expected parallel execution, got {elapsed:.2f}s"
-    pool.shutdown()
+    with cfuture.ThreadPoolExecutor(workers=4) as pool:
+        start = time.time()
+        futures = [pool.submit(lambda: time.sleep(0.3)) for _ in range(4)]
+        for ftr in futures:
+            ftr.result(timeout=5.0)
+        elapsed = time.time() - start
+        assert elapsed < 1.0, f"Expected parallel execution, got {elapsed:.2f}s"
 
 
 def test_context_manager():

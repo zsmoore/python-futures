@@ -349,6 +349,106 @@ static void test_pickled_encodes_as_sv_pickle(void) {
 }
 
 /* -------------------------------------------------------------------------
+ * SV_CUSTOM: encode via __xi_encode__, decode back, deep copy independence
+ *
+ * We build a minimal class with __xi_encode__ / __xi_decode__ in Python,
+ * then exercise the C encode/decode/copy/free paths directly.
+ * -------------------------------------------------------------------------*/
+
+/* Helper: compile and eval Python source, return the named object from globals. */
+static PyObject *eval_and_get(const char *src, const char *name) {
+    PyObject *builtins = PyImport_ImportModule("builtins");
+    if (!builtins) return NULL;
+    PyObject *globs = PyDict_New();
+    if (!globs) { Py_DECREF(builtins); return NULL; }
+    PyDict_SetItemString(globs, "__builtins__", builtins);
+    Py_DECREF(builtins);
+    PyObject *code = Py_CompileString(src, "<test>", Py_file_input);
+    if (!code) { Py_DECREF(globs); return NULL; }
+    PyObject *res = PyEval_EvalCode(code, globs, globs);
+    Py_DECREF(code);
+    if (!res) { PyErr_Print(); Py_DECREF(globs); return NULL; }
+    Py_DECREF(res);
+    PyObject *obj = PyDict_GetItemString(globs, name);
+    Py_XINCREF(obj);
+    Py_DECREF(globs);
+    return obj;
+}
+
+/* Build a minimal SV_CUSTOM value by constructing the meta-dict manually,
+ * bypassing the need for an importable module. This lets us test free/copy
+ * without depending on PyImport resolving the class at decode time. */
+static int make_sv_custom(SharedValue *sv) {
+    /* Simulate what sv_fill_from_pyobject does for an xi-encoded object:
+     * meta = {"__xi_module__": "m", "__xi_qualname__": "C", "__xi_data__": {"v": 1}} */
+    PyObject *data = PyDict_New();
+    if (!data) return -1;
+    PyObject *one = PyLong_FromLong(1);
+    PyDict_SetItemString(data, "v", one);
+    Py_DECREF(one);
+
+    PyObject *meta = PyDict_New();
+    if (!meta) { Py_DECREF(data); return -1; }
+    PyDict_SetItemString(meta, "__xi_module__", PyUnicode_FromString("m"));
+    PyDict_SetItemString(meta, "__xi_qualname__", PyUnicode_FromString("C"));
+    PyDict_SetItemString(meta, "__xi_data__", data);
+    Py_DECREF(data);
+
+    int rc = sv_fill_from_pyobject(sv, meta);
+    if (rc == 0) sv->tag = SV_CUSTOM;
+    Py_DECREF(meta);
+    return rc;
+}
+
+static void test_sv_custom_encodes_as_sv_custom_tag(void) {
+    /* An object with __xi_encode__ must be stored with tag SV_CUSTOM. */
+    PyObject *instance = eval_and_get(
+        "class Point:\n"
+        "    def __init__(self, x, y): self.x = x; self.y = y\n"
+        "    def __xi_encode__(self): return {'x': self.x, 'y': self.y}\n"
+        "    @classmethod\n"
+        "    def __xi_decode__(cls, d): return cls(d['x'], d['y'])\n"
+        "instance = Point(3, 4)\n",
+        "instance");
+    TEST_ASSERT_NOT_NULL(instance);
+
+    SharedValue sv;
+    int rc = sv_fill_from_pyobject(&sv, instance);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(SV_CUSTOM, sv.tag);
+    TEST_ASSERT_NOT_NULL(sv.dict);
+
+    Py_DECREF(instance);
+    sv_free_inline(&sv);
+}
+
+static void test_sv_custom_free_inline_does_not_crash(void) {
+    /* sv_free_inline on SV_CUSTOM must free the dict without crashing. */
+    SharedValue sv;
+    TEST_ASSERT_EQUAL_INT(0, make_sv_custom(&sv));
+    TEST_ASSERT_EQUAL_INT(SV_CUSTOM, sv.tag);
+    TEST_ASSERT_NOT_NULL(sv.dict);
+
+    sv_free_inline(&sv);  /* must not crash or skip the dict */
+}
+
+static void test_sv_custom_deep_copy_is_independent(void) {
+    /* Deep copy of SV_CUSTOM must allocate a distinct sv.dict pointer. */
+    SharedValue src;
+    TEST_ASSERT_EQUAL_INT(0, make_sv_custom(&src));
+    TEST_ASSERT_EQUAL_INT(SV_CUSTOM, src.tag);
+
+    SharedValue dst;
+    sv_deep_copy_inline(&dst, &src);
+    TEST_ASSERT_EQUAL_INT(SV_CUSTOM, dst.tag);
+    TEST_ASSERT_NOT_NULL(dst.dict);
+    TEST_ASSERT_NOT_EQUAL(src.dict, dst.dict);  /* independent allocation */
+
+    sv_free_inline(&src);
+    sv_free_inline(&dst);
+}
+
+/* -------------------------------------------------------------------------
  * main
  * -------------------------------------------------------------------------*/
 
@@ -380,6 +480,9 @@ int main(void) {
     RUN_TEST(test_deep_copy_null_returns_null);
     RUN_TEST(test_unsupported_type_sets_error);
     RUN_TEST(test_pickled_encodes_as_sv_pickle);
+    RUN_TEST(test_sv_custom_encodes_as_sv_custom_tag);
+    RUN_TEST(test_sv_custom_free_inline_does_not_crash);
+    RUN_TEST(test_sv_custom_deep_copy_is_independent);
 
     int result = UNITY_END();
     Py_Finalize();

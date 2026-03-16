@@ -97,5 +97,3 @@ def test_future_cancel_on_completed_returns_false():
 def test_future_cancelled_false_on_completed():
     f = cfuture.Future.completed(1)
     assert not f.cancelled()
-
-

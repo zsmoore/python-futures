@@ -22,6 +22,7 @@ void sv_free_inline(SharedValue *sv) {
             }
             break;
         case SV_DICT:
+        case SV_CUSTOM:
             if (sv->dict) {
                 for (size_t i = 0; i < sv->dict->len; i++) {
                     sv_free_inline(&sv->dict->entries[i].key);
@@ -275,7 +276,6 @@ void sv_deep_copy_inline(SharedValue *dst, const SharedValue *src) {
             break;
         case SV_LIST:
         case SV_TUPLE:
-        case SV_CUSTOM:
             if (src->list) {
                 dst->list = malloc(sizeof(SharedList));
                 if (dst->list) {
@@ -289,6 +289,7 @@ void sv_deep_copy_inline(SharedValue *dst, const SharedValue *src) {
             }
             break;
         case SV_DICT:
+        case SV_CUSTOM:
             if (src->dict) {
                 dst->dict = malloc(sizeof(SharedDict));
                 if (dst->dict) {
