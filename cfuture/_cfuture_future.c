@@ -37,7 +37,7 @@ void task_free(Task *t) {
         for (int i = 0; i < cb->ndeps; i++)
             sv_free(cb->dep_templates[i]);
         free(cb->dep_templates);
-        /* out_future is managed by Python refcount */
+        Py_XDECREF(cb->out_future);  /* release callback's strong ref to out_future */
         free(cb);
         cb = next;
     }
@@ -242,6 +242,7 @@ PyObject *future_add_callback(FutureObject *self, PyObject *fn, PyObject *deps_l
         return PyErr_NoMemory();
     }
     cb->out_future = out;
+    Py_INCREF(out);  /* callback holds a strong ref to keep out_future alive */
 
     /* Append callback to task */
     pthread_mutex_lock(&self->task->lock);

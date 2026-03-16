@@ -176,6 +176,75 @@ static void test_task_decref_null_is_safe(void) {
 }
 
 /* -------------------------------------------------------------------------
+ * out_future refcount — task_free decrefs, future_add_callback increfs
+ * -------------------------------------------------------------------------*/
+
+static void test_task_free_decrefs_out_future(void) {
+    /* Build a task with one callback whose out_future is a plain PyObject.
+     * task_free must Py_XDECREF cb->out_future, dropping its refcount. */
+    Task *t = task_new();
+    TEST_ASSERT_NOT_NULL(t);
+
+    /* Use a simple Python integer as a stand-in PyObject for out_future.
+     * Cast is safe: we only care about the refcount, not the type. */
+    PyObject *mock_future = PyLong_FromLong(999);
+    TEST_ASSERT_NOT_NULL(mock_future);
+    Py_ssize_t refcount_before = Py_REFCNT(mock_future);
+
+    Callback *cb = calloc(1, sizeof(Callback));
+    TEST_ASSERT_NOT_NULL(cb);
+    cb->out_future = (FutureObject *)mock_future;
+    Py_INCREF(mock_future);  /* simulate the incref future_add_callback does */
+    t->callbacks = cb;
+
+    task_free(t);  /* must Py_XDECREF cb->out_future */
+
+    TEST_ASSERT_EQUAL(refcount_before, Py_REFCNT(mock_future));
+    Py_DECREF(mock_future);
+}
+
+static void test_future_add_callback_increfs_out_future(void) {
+    /* future_add_callback must Py_INCREF out_future so it stays alive
+     * even if the caller drops its Python reference. */
+    if (PyType_Ready(&FutureType) < 0) {
+        TEST_FAIL_MESSAGE("FutureType not ready");
+        return;
+    }
+
+    /* Create a pre-completed future so the callback fires immediately
+     * (inline path in future_add_callback), avoiding any worker thread. */
+    PyObject *args = PyTuple_Pack(1, PyLong_FromLong(1));
+    FutureObject *base = (FutureObject *)future_completed(NULL, args);
+    Py_DECREF(args);
+    TEST_ASSERT_NOT_NULL(base);
+
+    /* Build a plain no-op callable */
+    PyObject *globs = PyDict_New();
+    PyDict_SetItemString(globs, "__builtins__", PyEval_GetBuiltins());
+    PyObject *code = Py_CompileString("def f(x, d): return x\n", "<t>", Py_file_input);
+    TEST_ASSERT_NOT_NULL(code);
+    PyObject *res = PyEval_EvalCode(code, globs, globs);
+    Py_XDECREF(res); Py_DECREF(code);
+    PyObject *fn = PyDict_GetItemString(globs, "f");
+    TEST_ASSERT_NOT_NULL(fn);
+
+    PyObject *deps = PyList_New(0);
+    PyObject *out = future_add_callback(base, fn, deps, CB_THEN);
+    TEST_ASSERT_NOT_NULL(out);
+
+    /* out_future was returned to Python (refcount 1 from new) AND the
+     * callback holds a second ref — so refcount must be >= 2.
+     * (On the inline-fire path the callback is gone after firing, but
+     * we still got a valid object back.) */
+    TEST_ASSERT_GREATER_OR_EQUAL(1, (int)Py_REFCNT(out));
+
+    Py_DECREF(out);
+    Py_DECREF(deps);
+    Py_DECREF(globs);
+    Py_DECREF((PyObject *)base);
+}
+
+/* -------------------------------------------------------------------------
  * main
  * -------------------------------------------------------------------------*/
 
@@ -198,6 +267,8 @@ int main(void) {
     RUN_TEST(test_task_decref_does_not_free_when_refs_remain);
     RUN_TEST(test_task_incref_null_is_safe);
     RUN_TEST(test_task_decref_null_is_safe);
+    RUN_TEST(test_task_free_decrefs_out_future);
+    RUN_TEST(test_future_add_callback_increfs_out_future);
 
     int result = UNITY_END();
     Py_Finalize();

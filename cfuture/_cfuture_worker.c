@@ -36,6 +36,8 @@ void fire_callbacks(Worker *w, Task *task, int is_error) {
 
         Task *out_task = cb->out_future->task;
 
+        task_incref(out_task);  /* keep out_task alive across fire_callbacks */
+
         if (should_fire) {
             /* Build input */
             PyObject *input = NULL;
@@ -95,6 +97,8 @@ void fire_callbacks(Worker *w, Task *task, int is_error) {
 
             fire_callbacks(w, out_task, out_task->failed);
         }
+
+        task_decref(out_task);  /* release fire_callbacks reference */
 
         cb = next_cb;
     }
