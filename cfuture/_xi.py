@@ -11,8 +11,6 @@ import dataclasses
 
 def xi_dataclass(cls):
     """Decorator that auto-implements __xi_encode__ / __xi_decode__ for dataclasses."""
-    fields = dataclasses.fields(cls)
-
     def __xi_encode__(self):
         return dataclasses.asdict(self)
 

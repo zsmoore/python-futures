@@ -89,9 +89,6 @@ class Future:
     def done(self):
         return object.__getattribute__(self, "_f").done()
 
-    def failed(self):
-        return object.__getattribute__(self, "_f").failed()
-
     def cancelled(self):
         return object.__getattribute__(self, "_f").cancelled()
 

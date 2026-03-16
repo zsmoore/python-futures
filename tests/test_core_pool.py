@@ -4,6 +4,14 @@ import pytest
 import cfuture
 
 
+def _sleep_10():
+    time.sleep(10)
+
+
+def _sleep_03():
+    time.sleep(0.3)
+
+
 # ---------------------------------------------------------------------------
 # ThreadPoolExecutor — lifecycle
 # ---------------------------------------------------------------------------
@@ -100,7 +108,7 @@ def test_submit_raises_on_exception():
 
 def test_result_timeout_raises():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        f = pool.submit(lambda: time.sleep(10))
+        f = pool.submit(_sleep_10)
         with pytest.raises(TimeoutError):
             f.result(timeout=0.05)
         pool.shutdown(wait=False)
@@ -115,7 +123,7 @@ def test_future_done_after_result():
 
 def test_future_cancel_queued():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        blocker = pool.submit(lambda: time.sleep(0.3))
+        blocker = pool.submit(_sleep_03)
         queued = pool.submit(lambda: 99)
         cancelled = queued.cancel()
         if cancelled:
@@ -136,7 +144,7 @@ def test_parallel_workers():
     """All workers run in parallel — measure total time."""
     with cfuture.ThreadPoolExecutor(workers=4) as pool:
         start = time.time()
-        futures = [pool.submit(lambda: time.sleep(0.3)) for _ in range(4)]
+        futures = [pool.submit(_sleep_03) for _ in range(4)]
         for ftr in futures:
             ftr.result(timeout=5.0)
         elapsed = time.time() - start
@@ -157,5 +165,5 @@ def test_non_transferable_result_raises():
 
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         with pytest.raises((ValueError, RuntimeError)):
-            f = pool.submit(lambda: Opaque())
+            f = pool.submit(lambda: Opaque())  # noqa
             f.result(timeout=5.0)

@@ -24,6 +24,7 @@ def all_of(*futures):
     )
     return Future(_c.all_of(*unwrapped))
 
+
 __all__ = [
     "Future",
     "ThreadPoolExecutor",

@@ -1,6 +1,5 @@
 """Tests for __xi_encode__/__xi_decode__ protocol and @xi_dataclass decorator."""
 import dataclasses
-import pytest
 import cfuture
 from cfuture import xi_dataclass
 

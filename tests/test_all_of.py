@@ -1,7 +1,10 @@
 """Non-blocking all_of combinator tests."""
 import time
-import pytest
 import cfuture
+
+
+def _sleep_03():
+    time.sleep(0.3)
 
 
 def test_all_of_basic():
@@ -23,7 +26,7 @@ def test_all_of_parallel():
     """all_of should not block worker threads."""
     with cfuture.ThreadPoolExecutor(workers=4) as pool:
         start = time.time()
-        futures = [pool.submit(lambda: time.sleep(0.3)) for _ in range(4)]
+        futures = [pool.submit(_sleep_03) for _ in range(4)]
         combined = cfuture.all_of(*futures)
         combined.result(timeout=5.0)
         elapsed = time.time() - start
@@ -35,7 +38,7 @@ def test_all_of_then_chain():
     with cfuture.ThreadPoolExecutor(workers=2) as pool:
         f1 = pool.submit(lambda: 1)
         f2 = pool.submit(lambda: 2)
-        result_f = cfuture.all_of(f1, f2).then(lambda results, d, s: sum(results), deps=[])
+        result_f = cfuture.all_of(f1, f2).then(lambda results, d, s: sum(results))
         assert result_f.result(timeout=5.0) == 3
 
 

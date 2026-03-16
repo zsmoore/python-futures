@@ -1,6 +1,5 @@
 """Tests for cfuture.lint CFU001 and CFU002 checker."""
-import pytest
-from cfuture.lint import check_file, CFU001, CFU002
+from cfuture.lint import check_file
 
 
 # ── CFU001: closure capture detection ────────────────────────────────────────
@@ -130,5 +129,3 @@ def my_task():
 """
     errors = check_file(code)
     assert all("CFU002" not in msg for _, _, msg in errors)
-
-

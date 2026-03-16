@@ -7,7 +7,6 @@ These tests run in subprocesses to avoid killing the test runner.
 import subprocess
 import sys
 import textwrap
-import pytest
 
 
 def run_in_subprocess(code: str, timeout: float = 15.0) -> tuple[int, str, str]:
