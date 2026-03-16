@@ -12,4 +12,10 @@ python -m grpc_tools.protoc \
     --grpc_python_out="$OUT_DIR" \
     "$PROTO_DIR/worker.proto"
 
+# grpcio-tools generates a bare 'import worker_pb2' which breaks when the
+# module is inside a package.  Fix it to a package-relative import.
+sed -i '' \
+    's/^import worker_pb2 as worker__pb2$/from asyncio_server.generated import worker_pb2 as worker__pb2/' \
+    "$OUT_DIR/worker_pb2_grpc.py"
+
 echo "Stubs written to $OUT_DIR"
