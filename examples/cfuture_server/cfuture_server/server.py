@@ -56,6 +56,14 @@ def handle_item(x: int, d: list) -> tuple:
 # ── gRPC servicer ─────────────────────────────────────────────────────────────
 
 class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
+    """
+    Accepts a long-lived ThreadPoolExecutor created at startup.
+    Sub-interpreter workers are booted once and reused across all RPCs —
+    no per-request startup cost.
+    """
+
+    def __init__(self, pool: ThreadPoolExecutor) -> None:
+        self._pool = pool
 
     def Process(
         self,
@@ -84,12 +92,11 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
             for r in request.requests
         ]
 
-        with ThreadPoolExecutor(workers=_WORKERS) as pool:
-            futs: list[Future[tuple]] = [
-                pool.submit(lambda: 0).then(handle_item, deps=[item])
-                for item in items
-            ]
-            results: list[tuple] = all_of(*futs).result(timeout=30.0)
+        futs: list[Future[tuple]] = [
+            self._pool.submit(lambda: 0).then(handle_item, deps=[item])
+            for item in items
+        ]
+        results: list[tuple] = all_of(*futs).result(timeout=30.0)
 
         total_ms = (time.perf_counter() - batch_start) * 1000
 
@@ -112,12 +119,20 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
 # ── entrypoint ────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Boot sub-interpreter workers once before accepting any requests.
+    pool = ThreadPoolExecutor(workers=_WORKERS)
+    print(f"cfuture: {_WORKERS} sub-interpreter workers ready")
+
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    worker_pb2_grpc.add_WorkerServiceServicer_to_server(WorkerServicer(), server)
+    worker_pb2_grpc.add_WorkerServiceServicer_to_server(WorkerServicer(pool), server)
     server.add_insecure_port(f"[::]:{_PORT}")
     server.start()
-    print(f"cfuture gRPC server listening on port {_PORT} ({_WORKERS} sub-interpreter workers)")
-    server.wait_for_termination()
+    print(f"cfuture gRPC server listening on port {_PORT}")
+
+    try:
+        server.wait_for_termination()
+    finally:
+        pool.shutdown()
 
 
 if __name__ == "__main__":
