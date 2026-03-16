@@ -5,28 +5,28 @@ import cfuture
 
 def test_none_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: None).then(lambda x, d: d[0] is None, deps=[None])
+    f = pool.submit(lambda: None).then(lambda x, d, s: d[0] is None, deps=[None])
     assert f.result(timeout=5.0) is True
     pool.shutdown()
 
 
 def test_bool_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0], deps=[True])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0], deps=[True])
     assert f.result(timeout=5.0) is True
     pool.shutdown()
 
 
 def test_int_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0] + 1, deps=[41])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0] + 1, deps=[41])
     assert f.result(timeout=5.0) == 42
     pool.shutdown()
 
 
 def test_float_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0] * 2, deps=[3.14])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0] * 2, deps=[3.14])
     result = f.result(timeout=5.0)
     assert abs(result - 6.28) < 1e-9
     pool.shutdown()
@@ -34,14 +34,14 @@ def test_float_dep():
 
 def test_str_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0] + " world", deps=["hello"])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0] + " world", deps=["hello"])
     assert f.result(timeout=5.0) == "hello world"
     pool.shutdown()
 
 
 def test_bytes_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: 0).then(lambda x, d: len(d[0]), deps=[b"abc"])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: len(d[0]), deps=[b"abc"])
     assert f.result(timeout=5.0) == 3
     pool.shutdown()
 
@@ -49,7 +49,7 @@ def test_bytes_dep():
 def test_list_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
     items = [1, 2, 3]
-    f = pool.submit(lambda: 0).then(lambda x, d: sum(d[0]), deps=[items])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: sum(d[0]), deps=[items])
     assert f.result(timeout=5.0) == 6
     pool.shutdown()
 
@@ -57,7 +57,7 @@ def test_list_dep():
 def test_dict_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
     config = {"scale": 10.0}
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0]["scale"] * 2, deps=[config])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0]["scale"] * 2, deps=[config])
     result = f.result(timeout=5.0)
     assert abs(result - 20.0) < 1e-9
     pool.shutdown()
@@ -66,7 +66,7 @@ def test_dict_dep():
 def test_tuple_dep():
     pool = cfuture.ThreadPoolExecutor(workers=1)
     t = (1, 2, 3)
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0][1], deps=[t])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0][1], deps=[t])
     assert f.result(timeout=5.0) == 2
     pool.shutdown()
 
@@ -75,7 +75,7 @@ def test_mutation_after_registration_has_no_effect():
     """Mutations to deps after .then() registration must not affect callback."""
     pool = cfuture.ThreadPoolExecutor(workers=1)
     data = [1, 2, 3]
-    f = pool.submit(lambda: 0).then(lambda x, d: d[0][:], deps=[data])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: d[0][:], deps=[data])
     # Mutate after registration
     data.append(99)
     result = f.result(timeout=5.0)
@@ -88,7 +88,7 @@ def test_pickled_dep():
     import datetime
     pool = cfuture.ThreadPoolExecutor(workers=1)
     dt = datetime.datetime(2024, 1, 1, 12, 0, 0)
-    f = pool.submit(lambda: 0).then(lambda x, d: str(d[0].year), deps=[cfuture.pickled(dt)])
+    f = pool.submit(lambda: 0).then(lambda x, d, s: str(d[0].year), deps=[cfuture.pickled(dt)])
     assert f.result(timeout=5.0) == "2024"
     pool.shutdown()
 
@@ -105,3 +105,88 @@ def test_non_transferable_raises_at_registration():
     finally:
         sock.close()
         pool.shutdown()
+
+
+# ── shared= startup injection tests ──────────────────────────────────────────
+
+def test_shared_must_be_dict():
+    """shared= must be a dict, not a list."""
+    with pytest.raises(TypeError):
+        cfuture.ThreadPoolExecutor(workers=1, shared=["not", "a", "dict"])
+
+
+# ── shared= value access inside callbacks ─────────────────────────────────────
+
+def test_shared_string_accessible_in_then():
+    """shared dict is passed as third arg and values are accessible."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"greeting": "hello"})
+    f = pool.submit(lambda: "world").then(
+        lambda x, d, s: s["greeting"] + " " + x, deps=[]
+    )
+    assert f.result(timeout=5.0) == "hello world"
+    pool.shutdown()
+
+
+def test_shared_int_accessible_in_then():
+    """shared integer is accessible and correct type."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"scale": 7})
+    f = pool.submit(lambda: 6).then(
+        lambda x, d, s: x * s["scale"], deps=[]
+    )
+    assert f.result(timeout=5.0) == 42
+    pool.shutdown()
+
+
+def test_shared_dict_accessible_in_then():
+    """shared nested dict is accessible."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"cfg": {"factor": 3}})
+    f = pool.submit(lambda: 10).then(
+        lambda x, d, s: x * s["cfg"]["factor"], deps=[]
+    )
+    assert f.result(timeout=5.0) == 30
+    pool.shutdown()
+
+
+def test_shared_and_deps_together():
+    """shared dict and deps list are both accessible in the same callback."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"base": 100})
+    f = pool.submit(lambda: 0).then(
+        lambda x, d, s: s["base"] + d[0], deps=[5]
+    )
+    assert f.result(timeout=5.0) == 105
+    pool.shutdown()
+
+
+def test_shared_is_empty_dict_when_no_shared():
+    """When no shared= is given, s is an empty dict (not None)."""
+    pool = cfuture.ThreadPoolExecutor(workers=1)
+    f = pool.submit(lambda: 0).then(
+        lambda x, d, s: isinstance(s, dict) and len(s) == 0, deps=[]
+    )
+    assert f.result(timeout=5.0) is True
+    pool.shutdown()
+
+
+def test_shared_is_deep_copy_per_callback():
+    """Each callback invocation gets an independent copy of shared values."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"items": [1, 2, 3]})
+    f1 = pool.submit(lambda: 0).then(lambda x, d, s: s["items"], deps=[])
+    f2 = pool.submit(lambda: 0).then(lambda x, d, s: s["items"], deps=[])
+    r1 = f1.result(timeout=5.0)
+    r2 = f2.result(timeout=5.0)
+    assert r1 == [1, 2, 3]
+    assert r2 == [1, 2, 3]
+    assert r1 is not r2  # independent copies
+    pool.shutdown()
+
+
+def test_shared_accessible_in_except():
+    """shared dict is accessible in except_ callbacks."""
+    pool = cfuture.ThreadPoolExecutor(workers=1, shared={"fallback": -1})
+
+    def fail():
+        raise RuntimeError("oops")
+
+    f = pool.submit(fail).except_(lambda e, d, s: s["fallback"], deps=[])
+    assert f.result(timeout=5.0) == -1
+    pool.shutdown()

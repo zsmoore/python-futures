@@ -22,7 +22,22 @@ static void capture_exception_strings(Task *task) {
     Py_DECREF(exc);
 }
 
-void fire_callbacks(Worker *w, Task *task, int is_error) {
+PyObject *build_shared_dict(Pool *pool) {
+    PyObject *d = PyDict_New();
+    if (!d) return NULL;
+    if (!pool || pool->nshared == 0) return d;
+    for (int i = 0; i < pool->nshared; i++) {
+        SharedValue *copy = sv_deep_copy(pool->shared_templates[i]);
+        PyObject *val = copy ? sv_to_pyobject(copy) : Py_NewRef(Py_None);
+        sv_free(copy);
+        if (!val) { Py_DECREF(d); return NULL; }
+        PyDict_SetItemString(d, pool->shared_keys[i], val);
+        Py_DECREF(val);
+    }
+    return d;
+}
+
+void fire_callbacks(Pool *pool, Task *task, int is_error) {
     pthread_mutex_lock(&task->lock);
     Callback *cb = task->callbacks;
     pthread_mutex_unlock(&task->lock);
@@ -58,12 +73,16 @@ void fire_callbacks(Worker *w, Task *task, int is_error) {
                 PyTuple_SET_ITEM(deps_tuple, i, dep_obj);
             }
 
+            /* Build shared dict */
+            PyObject *shared_dict = build_shared_dict(pool);
+
             PyObject *result = NULL;
-            if (input && deps_ok) {
-                result = PyObject_CallFunctionObjArgs(cb->code, input, deps_tuple, NULL);
+            if (input && deps_ok && shared_dict) {
+                result = PyObject_CallFunctionObjArgs(cb->code, input, deps_tuple, shared_dict, NULL);
             }
             Py_XDECREF(input);
             Py_XDECREF(deps_tuple);
+            Py_XDECREF(shared_dict);
 
             pthread_mutex_lock(&out_task->lock);
             if (result) {
@@ -82,7 +101,7 @@ void fire_callbacks(Worker *w, Task *task, int is_error) {
             pthread_mutex_unlock(&out_task->lock);
 
             /* Recurse: fire out_task's callbacks */
-            fire_callbacks(w, out_task, out_task->failed);
+            fire_callbacks(pool, out_task, out_task->failed);
         } else {
             /* Propagate result/error through this callback without calling fn */
             pthread_mutex_lock(&out_task->lock);
@@ -95,7 +114,7 @@ void fire_callbacks(Worker *w, Task *task, int is_error) {
             pthread_cond_broadcast(&out_task->cond);
             pthread_mutex_unlock(&out_task->lock);
 
-            fire_callbacks(w, out_task, out_task->failed);
+            fire_callbacks(pool, out_task, out_task->failed);
         }
 
         task_decref(out_task);  /* release fire_callbacks reference */
@@ -187,7 +206,7 @@ static void *worker_fn(void *arg) {
             task->failed = 1;
         }
 
-        fire_callbacks(w, task, task->failed);
+        fire_callbacks(w->pool, task, task->failed);
 
         pthread_mutex_lock(&task->lock);
         task->done = 1;
@@ -456,9 +475,9 @@ static void allof_callback_dealloc(AllOfCallbackObj *self) {
 }
 
 static PyObject *allof_callback_call(AllOfCallbackObj *self, PyObject *args, PyObject *kwargs) {
-    /* Called as fn(result, deps) from fire_callbacks */
-    PyObject *result_obj = NULL, *deps_tuple = NULL;
-    if (!PyArg_ParseTuple(args, "OO", &result_obj, &deps_tuple))
+    /* Called as fn(result, deps, shared) from fire_callbacks */
+    PyObject *result_obj = NULL, *deps_tuple = NULL, *shared_dict = NULL;
+    if (!PyArg_ParseTuple(args, "OOO", &result_obj, &deps_tuple, &shared_dict))
         return NULL;
 
     AllOfState *state = self->state;
@@ -505,7 +524,7 @@ static PyObject *allof_callback_call(AllOfCallbackObj *self, PyObject *args, PyO
         pthread_cond_broadcast(&out->cond);
         pthread_mutex_unlock(&out->lock);
 
-        /* Fire any callbacks registered on the all_of future */
+        /* Fire any callbacks registered on the all_of future (no pool = empty shared dict) */
         task_incref(out);
         fire_callbacks(NULL, out, out->failed);
         task_decref(out);

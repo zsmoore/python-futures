@@ -16,7 +16,7 @@ CFLAGS  := -std=c11 -Wall -Wextra -g \
 
 LDFLAGS := -F$(PY_FRAMEWORK) -framework Python -pthread
 
-TESTS   := test_shared_value test_future_internals
+TESTS   := test_shared_value test_future_internals test_build_shared_dict
 
 .PHONY: all run clean
 
@@ -26,6 +26,9 @@ test_shared_value: test_shared_value.c unity.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 test_future_internals: test_future_internals.c unity.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+test_build_shared_dict: test_build_shared_dict.c unity.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 run: all

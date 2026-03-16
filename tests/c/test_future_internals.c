@@ -15,6 +15,14 @@
 
 #include "../../cfuture/_cfuture_shared_value.c"
 #include "../../cfuture/_cfuture_pickled.c"
+
+/* build_shared_dict lives in _cfuture_worker.c which we don't include here.
+   Provide a stub: always return an empty dict (sufficient for task/validate tests). */
+PyObject *build_shared_dict(Pool *pool) {
+    (void)pool;
+    return PyDict_New();
+}
+
 #include "../../cfuture/_cfuture_future.c"
 
 void setUp(void)    {}
