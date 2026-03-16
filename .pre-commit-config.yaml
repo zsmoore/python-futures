@@ -21,3 +21,9 @@ repos:
         entry: .venv/bin/python -m pytest tests/ -q --tb=short
         pass_filenames: false
         always_run: true
+      - id: c-tests
+        name: C Unity tests
+        language: system
+        entry: bash -c "cd tests/c && make run"
+        pass_filenames: false
+        always_run: true
