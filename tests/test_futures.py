@@ -21,10 +21,10 @@ def test_future_done():
 
 def test_future_timeout():
     pool = cfuture.ThreadPoolExecutor(workers=1)
-    f = pool.submit(lambda: time.sleep(10))
+    f = pool.submit(lambda: time.sleep(0.5))
     with pytest.raises(TimeoutError):
         f.result(timeout=0.1)
-    pool.shutdown(wait=False)
+    pool.shutdown()
 
 
 def test_future_cancel():
