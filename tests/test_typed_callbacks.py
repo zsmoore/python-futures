@@ -39,6 +39,24 @@ def always_cleanup(x: Any) -> str:
     return "done"
 
 
+# Multiple heterogeneous deps — tuple annotation makes each element's type explicit.
+# d[0] is int (multiplier), d[1] is str (label).
+def format_result(x: int, d: tuple[int, str]) -> str:
+    multiplier: int = d[0]
+    label: str = d[1]
+    return f"{x * multiplier}:{label}"
+
+
+# A→B transformation: int in, str out.  The return type is visible to the type
+# checker so Future[int].then(int_to_str) yields Future[str].
+def int_to_str(x: int) -> str:
+    return f"value={x}"
+
+
+def str_to_bool(s: str) -> bool:
+    return s.startswith("value=")
+
+
 # ---------------------------------------------------------------------------
 # Tests using named callbacks (fully typed)
 # ---------------------------------------------------------------------------
@@ -83,6 +101,33 @@ def test_named_finally():
     with ThreadPoolExecutor(workers=1) as pool:
         f: Future[str] = pool.submit(lambda: 99).finally_(always_cleanup)
         assert f.result(timeout=5.0) == "done"
+
+
+def test_multiple_typed_deps():
+    """deps carries two values with different types; tuple annotation names each one."""
+    with ThreadPoolExecutor(workers=1) as pool:
+        # deps=[3, "pts"] — d[0]: int multiplier, d[1]: str label
+        f: Future[str] = pool.submit(lambda: 10).then(
+            format_result, deps=[3, "pts"]
+        )
+        assert f.result(timeout=5.0) == "30:pts"
+
+
+def test_typed_chain_int_to_str():
+    """Future[int] → Future[str] — each step's type is visible to the checker."""
+    with ThreadPoolExecutor(workers=1) as pool:
+        fi: Future[int] = pool.submit(lambda: 7)
+        fs: Future[str] = fi.then(int_to_str)
+        assert fs.result(timeout=5.0) == "value=7"
+
+
+def test_typed_chain_int_to_str_to_bool():
+    """Three-hop A→B→C chain: int → str → bool, all result types explicit."""
+    with ThreadPoolExecutor(workers=1) as pool:
+        fi: Future[int] = pool.submit(lambda: 7)
+        fs: Future[str] = fi.then(int_to_str)
+        fb: Future[bool] = fs.then(str_to_bool)
+        assert fb.result(timeout=5.0) is True
 
 
 def test_named_and_lambda_mixed_chain():
