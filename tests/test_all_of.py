@@ -6,7 +6,7 @@ import cfuture
 
 def test_all_of_basic():
     pool = cfuture.ThreadPoolExecutor(workers=4)
-    futures = [pool.submit(lambda: i) for i in range(3)]
+    futures = [pool.submit(lambda: 1), pool.submit(lambda: 2), pool.submit(lambda: 3)]
     combined = cfuture.all_of(*futures)
     results = combined.result(timeout=5.0)
     assert isinstance(results, list)
