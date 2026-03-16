@@ -505,6 +505,11 @@ static PyObject *allof_callback_call(AllOfCallbackObj *self, PyObject *args, PyO
         pthread_cond_broadcast(&out->cond);
         pthread_mutex_unlock(&out->lock);
 
+        /* Fire any callbacks registered on the all_of future */
+        task_incref(out);
+        fire_callbacks(NULL, out, out->failed);
+        task_decref(out);
+
         /* Free AllOfState */
         for (int i = 0; i < state->total; i++) sv_free(state->results[i]);
         free(state->results);
