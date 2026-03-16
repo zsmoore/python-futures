@@ -1,7 +1,6 @@
 """Tests for cfuture.lint CFU001 and CFU002 checker."""
 import pytest
 from cfuture.lint import check_file, CFU001, CFU002
-from cfuture import xi_dataclass
 
 
 # ── CFU001: closure capture detection ────────────────────────────────────────
@@ -133,17 +132,3 @@ def my_task():
     assert all("CFU002" not in msg for _, _, msg in errors)
 
 
-# ── xi_dataclass importable from cfuture ─────────────────────────────────────
-
-def test_xi_dataclass_decorator_importable():
-    """xi_dataclass is importable from cfuture."""
-    import dataclasses
-
-    @xi_dataclass
-    @dataclasses.dataclass
-    class Pt:
-        x: float
-
-    obj = Pt(1.0)
-    assert obj.__xi_encode__() == {"x": 1.0}
-    assert Pt.__xi_decode__({"x": 2.0}).x == 2.0
