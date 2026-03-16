@@ -20,6 +20,7 @@ from asyncio_server.generated import worker_pb2, worker_pb2_grpc
 from asyncio_server.work import cpu_work
 
 _PORT: str = os.environ.get("ASYNCIO_PORT", "50052")
+_ITERATIONS: int = int(os.environ.get("ASYNCIO_ITERATIONS", "250000"))
 
 
 # ── gRPC servicer ─────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
         context: grpc.aio.ServicerContext,
     ) -> worker_pb2.ProcessResponse:
         start = time.perf_counter()
-        result = cpu_work(request.payload)
+        result = cpu_work(request.payload, iterations=_ITERATIONS)
         duration_ms = (time.perf_counter() - start) * 1000
         return worker_pb2.ProcessResponse(
             id=request.id,
@@ -50,7 +51,7 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
 
         async def handle_one(req: worker_pb2.ProcessRequest) -> worker_pb2.ProcessResponse:
             start = time.perf_counter()
-            result = cpu_work(req.payload)
+            result = cpu_work(req.payload, iterations=_ITERATIONS)
             duration_ms = (time.perf_counter() - start) * 1000
             return worker_pb2.ProcessResponse(
                 id=req.id,
@@ -75,7 +76,7 @@ async def _serve() -> None:
     worker_pb2_grpc.add_WorkerServiceServicer_to_server(WorkerServicer(), server)
     server.add_insecure_port(f"[::]:{_PORT}")
     await server.start()
-    print(f"asyncio gRPC server listening on port {_PORT}")
+    print(f"asyncio gRPC server listening on port {_PORT} (iterations={_ITERATIONS})")
     await server.wait_for_termination()
 
 

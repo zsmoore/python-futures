@@ -22,6 +22,7 @@ from cfuture_server.work import cpu_work
 
 _WORKERS: int = int(os.environ.get("CFUTURE_WORKERS", os.cpu_count() or 4))
 _PORT: str = os.environ.get("CFUTURE_PORT", "50051")
+_ITERATIONS: int = int(os.environ.get("CFUTURE_ITERATIONS", "250000"))
 
 
 # ── xi-protocol types ─────────────────────────────────────────────────────────
@@ -38,19 +39,23 @@ class Item:
 
 def handle_item(x: int, d: list) -> tuple:
     """
-    Worker callback: receives (unused_int, deps=[Item]).
+    Worker callback: receives (unused_int, deps=[Item, iterations]).
     Returns (request_id, result_hex, duration_ms).
+
+    Pure-Python LCG loop — GIL is held throughout so sub-interpreters
+    provide genuine parallelism rather than relying on C-extension GIL drops.
     """
     import time as _time
-    import hashlib as _hashlib
 
     item: Item = d[0]
+    iterations: int = d[1]
     start = _time.perf_counter()
-    data = item.payload.encode()
-    for _ in range(2000):
-        data = _hashlib.sha256(data).digest()
+    val = hash(item.payload) & 0xFFFFFFFF
+    for _ in range(iterations):
+        val = (val * 1664525 + 1013904223) & 0xFFFFFFFF
+    result = format(val, "08x")
     duration_ms = (_time.perf_counter() - start) * 1000
-    return (item.request_id, data.hex()[:16], duration_ms)
+    return (item.request_id, result, duration_ms)
 
 
 # ── gRPC servicer ─────────────────────────────────────────────────────────────
@@ -71,7 +76,7 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
         context: grpc.ServicerContext,
     ) -> worker_pb2.ProcessResponse:
         start = time.perf_counter()
-        result = cpu_work(request.payload)
+        result = cpu_work(request.payload, iterations=_ITERATIONS)
         duration_ms = (time.perf_counter() - start) * 1000
         return worker_pb2.ProcessResponse(
             id=request.id,
@@ -93,7 +98,7 @@ class WorkerServicer(worker_pb2_grpc.WorkerServiceServicer):
         ]
 
         futs: list[Future[tuple]] = [
-            self._pool.submit(lambda: 0).then(handle_item, deps=[item])
+            self._pool.submit(lambda: 0).then(handle_item, deps=[item, _ITERATIONS])
             for item in items
         ]
         results: list[tuple] = all_of(*futs).result(timeout=30.0)
@@ -127,7 +132,7 @@ def main() -> None:
     worker_pb2_grpc.add_WorkerServiceServicer_to_server(WorkerServicer(pool), server)
     server.add_insecure_port(f"[::]:{_PORT}")
     server.start()
-    print(f"cfuture gRPC server listening on port {_PORT}")
+    print(f"cfuture gRPC server listening on port {_PORT} (iterations={_ITERATIONS})")
 
     try:
         server.wait_for_termination()
