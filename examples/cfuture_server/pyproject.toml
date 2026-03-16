@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cfuture-grpc-server"
+version = "0.1.0"
+description = "gRPC server using cfuture sub-interpreter parallelism"
+requires-python = ">=3.12"
+
+[project.dependencies]
+# grpcio and grpcio-tools for the server; cfuture from the parent repo.
+# Install with: pip install grpcio grpcio-tools && pip install -e ../../
+dependencies = [
+    "grpcio>=1.62",
+    "grpcio-tools>=1.62",
+]
+
+[project.scripts]
+server = "cfuture_server.server:main"
+client = "cfuture_server.client:main"

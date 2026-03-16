@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asyncio-grpc-server"
+version = "0.1.0"
+description = "gRPC server using asyncio for concurrency"
+requires-python = ">=3.12"
+
+[project.dependencies]
+dependencies = [
+    "grpcio>=1.62",
+    "grpcio-tools>=1.62",
+]
+
+[project.scripts]
+server = "asyncio_server.server:main"
+client = "asyncio_server.client:main"

@@ -9,3 +9,7 @@ dist/
 *.o
 *.a
 .venv/
+
+# generated gRPC stubs (run codegen.sh to regenerate)
+examples/*/*/generated/*_pb2.py
+examples/*/*/generated/*_pb2_grpc.py
