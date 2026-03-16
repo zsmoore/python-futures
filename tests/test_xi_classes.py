@@ -1,7 +1,7 @@
 """Tests for __xi_encode__/__xi_decode__ protocol and @xi_dataclass decorator."""
 import dataclasses
 import cfuture
-from cfuture import xi_dataclass
+from cfuture import Future, xi_dataclass
 
 
 # Module-level class definitions so the worker interpreter can import and
@@ -27,11 +27,11 @@ class Color:
         self.g = g
         self.b = b
 
-    def __xi_encode__(self):
+    def __xi_encode__(self) -> dict:
         return {"r": self.r, "g": self.g, "b": self.b}
 
     @classmethod
-    def __xi_decode__(cls, data):
+    def __xi_decode__(cls, data: dict) -> "Color":
         return cls(data["r"], data["g"], data["b"])
 
 
@@ -67,7 +67,7 @@ def test_xi_dataclass_basic_roundtrip():
     """@xi_dataclass encodes and decodes a simple dataclass."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         v = Vector(1.0, 2.0, 3.0)
-        f = pool.submit(lambda: 0).then(
+        f: Future[float] = pool.submit(lambda: 0).then(
             lambda x, d: d[0].x + d[0].y + d[0].z,
             deps=[v],
         )
@@ -77,11 +77,11 @@ def test_xi_dataclass_basic_roundtrip():
 def test_xi_dataclass_adds_encode_decode():
     """@xi_dataclass attaches __xi_encode__ and __xi_decode__."""
     t = Tag("hello")
-    encoded = t.__xi_encode__()
+    encoded: dict = t.__xi_encode__()
     assert isinstance(encoded, dict)
     assert encoded["name"] == "hello"
 
-    decoded = Tag.__xi_decode__(encoded)
+    decoded: Tag = Tag.__xi_decode__(encoded)
     assert decoded.name == "hello"
 
 
@@ -89,7 +89,7 @@ def test_manual_xi_protocol():
     """Manual __xi_encode__/__xi_decode__ implementation works."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         c = Color(255, 128, 0)
-        f = pool.submit(lambda: 0).then(
+        f: Future[int] = pool.submit(lambda: 0).then(
             lambda x, d: d[0].r + d[0].g + d[0].b,
             deps=[c],
         )
@@ -100,7 +100,7 @@ def test_nested_xi_dataclass():
     """xi_dataclass fields encode/decode correctly."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         obj = Outer("test", 7)
-        f = pool.submit(lambda: 0).then(
+        f: Future[int] = pool.submit(lambda: 0).then(
             lambda x, d: d[0].count * 2,
             deps=[obj],
         )
@@ -110,7 +110,7 @@ def test_nested_xi_dataclass():
 def test_xi_dataclass_with_string_fields():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         cfg = Config("localhost", 8080, False)
-        f = pool.submit(lambda: 0).then(
+        f: Future[str] = pool.submit(lambda: 0).then(
             lambda x, d: f"{d[0].host}:{d[0].port}",
             deps=[cfg],
         )
@@ -121,7 +121,7 @@ def test_xi_dataclass_custom_method_callable_in_worker():
     """Custom methods on xi_dataclass are callable on the decoded object in the worker."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         rect = Rectangle(3.0, 4.0)
-        f = pool.submit(lambda: 0).then(
+        f: Future[float] = pool.submit(lambda: 0).then(
             lambda x, d: d[0].area(),
             deps=[rect],
         )
@@ -132,7 +132,7 @@ def test_xi_dataclass_multiple_method_calls_in_worker():
     """Multiple method calls on the decoded object work correctly."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         rect = Rectangle(3.0, 4.0)
-        f = pool.submit(lambda: 0).then(
+        f: Future[float] = pool.submit(lambda: 0).then(
             lambda x, d: d[0].area() + d[0].perimeter(),
             deps=[rect],
         )
