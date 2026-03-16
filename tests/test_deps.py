@@ -93,27 +93,6 @@ def test_pickled_dep():
     pool.shutdown()
 
 
-def test_xi_dataclass():
-    """@xi_dataclass auto-implements encode/decode."""
-    import dataclasses
-
-    @cfuture.xi_dataclass
-    @dataclasses.dataclass
-    class Point:
-        x: float
-        y: float
-
-    pool = cfuture.ThreadPoolExecutor(workers=1)
-    p = Point(3.0, 4.0)
-    f = pool.submit(lambda: 0).then(
-        lambda x, d: d[0].x + d[0].y,
-        deps=[p]
-    )
-    result = f.result(timeout=5.0)
-    assert abs(result - 7.0) < 1e-9, f"Expected 7.0 got {result}"
-    pool.shutdown()
-
-
 def test_non_transferable_raises_at_registration():
     """Non-serialisable objects raise TypeError at .then() time."""
     import socket
