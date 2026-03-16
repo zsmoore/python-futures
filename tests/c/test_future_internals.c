@@ -129,6 +129,53 @@ static void test_validate_fn_closure_returns_minus1(void) {
 }
 
 /* -------------------------------------------------------------------------
+ * task_incref / task_decref
+ * -------------------------------------------------------------------------*/
+
+static void test_task_new_refcount_is_one(void) {
+    Task *t = task_new();
+    TEST_ASSERT_NOT_NULL(t);
+    TEST_ASSERT_EQUAL_INT(1, atomic_load(&t->refcount));
+    task_free(t);
+}
+
+static void test_task_incref_increments(void) {
+    Task *t = task_new();
+    TEST_ASSERT_NOT_NULL(t);
+    task_incref(t);
+    TEST_ASSERT_EQUAL_INT(2, atomic_load(&t->refcount));
+    /* Bring back to 1 so task_free can clean up */
+    atomic_fetch_sub(&t->refcount, 1);
+    task_free(t);
+}
+
+static void test_task_decref_to_zero_frees(void) {
+    /* task_decref with refcount==1 must free without crashing */
+    Task *t = task_new();
+    TEST_ASSERT_NOT_NULL(t);
+    TEST_ASSERT_EQUAL_INT(1, atomic_load(&t->refcount));
+    task_decref(t);  /* drops to 0 → calls task_free(t) */
+    /* No assertion needed — reaching here without crash is the pass condition */
+}
+
+static void test_task_decref_does_not_free_when_refs_remain(void) {
+    Task *t = task_new();
+    TEST_ASSERT_NOT_NULL(t);
+    task_incref(t);                          /* refcount = 2 */
+    task_decref(t);                          /* refcount = 1, must NOT free */
+    TEST_ASSERT_EQUAL_INT(1, atomic_load(&t->refcount));
+    task_decref(t);                          /* refcount = 0, now freed */
+}
+
+static void test_task_incref_null_is_safe(void) {
+    task_incref(NULL);  /* must not crash */
+}
+
+static void test_task_decref_null_is_safe(void) {
+    task_decref(NULL);  /* must not crash */
+}
+
+/* -------------------------------------------------------------------------
  * main
  * -------------------------------------------------------------------------*/
 
@@ -145,6 +192,12 @@ int main(void) {
     RUN_TEST(test_validate_fn_builtin_callable_ok);
     RUN_TEST(test_validate_fn_plain_function_ok);
     RUN_TEST(test_validate_fn_closure_returns_minus1);
+    RUN_TEST(test_task_new_refcount_is_one);
+    RUN_TEST(test_task_incref_increments);
+    RUN_TEST(test_task_decref_to_zero_frees);
+    RUN_TEST(test_task_decref_does_not_free_when_refs_remain);
+    RUN_TEST(test_task_incref_null_is_safe);
+    RUN_TEST(test_task_decref_null_is_safe);
 
     int result = UNITY_END();
     Py_Finalize();

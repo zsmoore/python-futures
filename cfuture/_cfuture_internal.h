@@ -97,6 +97,7 @@ typedef struct Task {
     pthread_cond_t   cond;
     Callback        *callbacks;
     struct Task     *next_in_queue;
+    _Atomic int      refcount;       /* 1 = FutureObject; +1 per enqueue/worker use */
 } Task;
 
 typedef struct Worker {
@@ -153,6 +154,8 @@ extern PyTypeObject PickledType;
 extern PyTypeObject FutureType;
 Task     *task_new(void);
 void      task_free(Task *t);
+void      task_incref(Task *t);
+void      task_decref(Task *t);
 int       validate_fn(PyObject *fn);
 PyObject *future_add_callback(FutureObject *self, PyObject *fn, PyObject *deps_list, int cb_type);
 PyObject *future_completed(PyObject *cls, PyObject *args);

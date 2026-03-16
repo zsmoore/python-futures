@@ -13,7 +13,17 @@ Task *task_new(void) {
     if (!t) return NULL;
     pthread_mutex_init(&t->lock, NULL);
     pthread_cond_init(&t->cond, NULL);
+    atomic_store(&t->refcount, 1);
     return t;
+}
+
+void task_incref(Task *t) {
+    if (t) atomic_fetch_add(&t->refcount, 1);
+}
+
+void task_decref(Task *t) {
+    if (t && atomic_fetch_sub(&t->refcount, 1) == 1)
+        task_free(t);
 }
 
 void task_free(Task *t) {
@@ -40,7 +50,7 @@ void task_free(Task *t) {
 
 static void future_dealloc(FutureObject *self) {
     if (self->owns_task)
-        task_free(self->task);
+        task_decref(self->task);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 

@@ -117,6 +117,7 @@ static Task *dequeue(Pool *pool) {
 }
 
 static void enqueue_task(Pool *pool, Task *task) {
+    task_incref(task);  /* worker queue holds a reference */
     pthread_mutex_lock(&pool->lock);
     task->next_in_queue = NULL;
     if (pool->tail) pool->tail->next_in_queue = task;
@@ -158,6 +159,7 @@ static void *worker_fn(void *arg) {
             pthread_mutex_unlock(&task->lock);
             atomic_store(&w->state, WORKER_IDLE);
             w->current_task = NULL;
+            task_decref(task);  /* release worker queue reference */
             continue;
         }
         task->started = 1;
@@ -190,6 +192,7 @@ static void *worker_fn(void *arg) {
 
         atomic_store(&w->state, WORKER_IDLE);
         w->current_task = NULL;
+        task_decref(task);  /* release worker queue reference */
     }
 
     PyThreadState_Clear(tstate);
