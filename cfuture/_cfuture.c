@@ -29,16 +29,7 @@ typedef struct SharedValue SharedValue;
 typedef struct SharedList  SharedList;
 typedef struct SharedDict  SharedDict;
 
-struct SharedList {
-    size_t       len;
-    SharedValue *items;
-};
-
-struct SharedDict {
-    size_t len;
-    struct { SharedValue key; SharedValue val; } *entries;
-};
-
+/* SharedValue must be fully defined before SharedDict uses it inline */
 struct SharedValue {
     SVTag tag;
     union {
@@ -50,6 +41,16 @@ struct SharedValue {
         /* SV_CUSTOM: encoded as a dict with "__xi_module__", "__xi_qualname__", "__xi_data__" */
         /* SV_PICKLE: stored as SV_BYTES (pickle bytes) */
     };
+};
+
+struct SharedList {
+    size_t       len;
+    SharedValue *items;
+};
+
+struct SharedDict {
+    size_t len;
+    struct { SharedValue key; SharedValue val; } *entries;
 };
 
 /* Forward declarations */
@@ -508,14 +509,14 @@ static PyObject *sv_to_pyobject(const SharedValue *sv) {
 #define WORKER_RUNNING 1
 #define WORKER_DEAD    2
 
-struct Future;
+typedef struct FutureObject FutureObject;
 
 typedef struct Callback {
     PyObject        *code;           /* PyCodeObject* */
     SharedValue    **dep_templates;  /* array of SharedValue* */
     int              ndeps;
     int              type;           /* CB_THEN / CB_EXCEPT / CB_FINALLY */
-    struct Future   *out_future;
+    FutureObject    *out_future;
     struct Callback *next;
 } Callback;
 
@@ -566,7 +567,7 @@ typedef struct Pool {
  * Future Python type
  * ────────────────────────────────────────────────────────────────────────── */
 
-typedef struct {
+typedef struct FutureObject {
     PyObject_HEAD
     Task  *task;
     Pool  *pool;
