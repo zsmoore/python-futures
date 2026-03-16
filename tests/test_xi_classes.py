@@ -51,6 +51,19 @@ class Config:
     debug: bool
 
 
+@xi_dataclass
+@dataclasses.dataclass
+class Rectangle:
+    width: float
+    height: float
+
+    def area(self) -> float:
+        return self.width * self.height
+
+    def perimeter(self) -> float:
+        return 2 * (self.width + self.height)
+
+
 def test_xi_dataclass_basic_roundtrip():
     """@xi_dataclass encodes and decodes a simple dataclass."""
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
@@ -103,3 +116,25 @@ def test_xi_dataclass_with_string_fields():
             deps=[cfg],
         )
         assert f.result(timeout=5.0) == "localhost:8080"
+
+
+def test_xi_dataclass_custom_method_callable_in_worker():
+    """Custom methods on xi_dataclass are callable on the decoded object in the worker."""
+    with cfuture.ThreadPoolExecutor(workers=1) as pool:
+        rect = Rectangle(3.0, 4.0)
+        f = pool.submit(lambda: 0).then(
+            lambda x, d, s: d[0].area(),
+            deps=[rect],
+        )
+        assert abs(f.result(timeout=5.0) - 12.0) < 1e-9
+
+
+def test_xi_dataclass_multiple_method_calls_in_worker():
+    """Multiple method calls on the decoded object work correctly."""
+    with cfuture.ThreadPoolExecutor(workers=1) as pool:
+        rect = Rectangle(3.0, 4.0)
+        f = pool.submit(lambda: 0).then(
+            lambda x, d, s: d[0].area() + d[0].perimeter(),
+            deps=[rect],
+        )
+        assert abs(f.result(timeout=5.0) - 26.0) < 1e-9  # 12 + 14
