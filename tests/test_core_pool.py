@@ -229,3 +229,50 @@ def test_non_transferable_result_raises():
         with pytest.raises((ValueError, RuntimeError)):
             f = pool.submit(lambda: Opaque())
             f.result(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — then / except_ / finally_
+# ---------------------------------------------------------------------------
+
+def test_chained_then():
+    pool = cfuture.ThreadPoolExecutor(workers=2)
+    f = pool.submit(lambda: 10).then(lambda x, d: x * 2, deps=[])
+    assert f.result(timeout=5.0) == 20
+    pool.shutdown()
+
+
+def test_except_handler():
+    pool = cfuture.ThreadPoolExecutor(workers=1)
+
+    def boom():
+        raise ValueError("intentional")
+
+    f = pool.submit(boom).except_(lambda e, d: "caught", deps=[])
+    assert f.result(timeout=5.0) == "caught"
+    pool.shutdown()
+
+
+def test_finally_handler():
+    pool = cfuture.ThreadPoolExecutor(workers=1)
+    f = pool.submit(lambda: 7).finally_(lambda x, d: x, deps=[])
+    assert f.result(timeout=5.0) == 7
+    pool.shutdown()
+
+
+def test_parallel_workers():
+    """All workers run in parallel — measure total time."""
+    pool = cfuture.ThreadPoolExecutor(workers=4)
+    start = time.time()
+    futures = [pool.submit(lambda: time.sleep(0.3)) for _ in range(4)]
+    for ftr in futures:
+        ftr.result(timeout=5.0)
+    elapsed = time.time() - start
+    assert elapsed < 1.0, f"Expected parallel execution, got {elapsed:.2f}s"
+    pool.shutdown()
+
+
+def test_context_manager():
+    with cfuture.ThreadPoolExecutor(workers=2) as pool:
+        f = pool.submit(lambda: "hello")
+        assert f.result(timeout=5.0) == "hello"
