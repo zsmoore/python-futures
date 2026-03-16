@@ -2,7 +2,7 @@
 import dataclasses
 import pytest
 import cfuture
-from cfuture.lint import xi_dataclass
+from cfuture import xi_dataclass
 
 
 # Module-level class definitions so the worker interpreter can import and
