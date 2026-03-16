@@ -2,13 +2,14 @@
 import time
 import pytest
 import cfuture
+from cfuture import Future, ThreadPoolExecutor
 
 
-def _sleep_10():
+def _sleep_10() -> None:
     time.sleep(10)
 
 
-def _sleep_03():
+def _sleep_03() -> None:
     time.sleep(0.3)
 
 
@@ -17,7 +18,7 @@ def _sleep_03():
 # ---------------------------------------------------------------------------
 
 def test_pool_creates_and_shuts_down():
-    pool = cfuture.ThreadPoolExecutor(workers=2)
+    pool: ThreadPoolExecutor = cfuture.ThreadPoolExecutor(workers=2)
     pool.shutdown()
 
 
@@ -28,7 +29,7 @@ def test_pool_context_manager_enter_exit():
 
 def test_pool_min_workers_clamp():
     with cfuture.ThreadPoolExecutor(workers=0) as pool:
-        f = pool.submit(lambda: 7)
+        f: Future[int] = pool.submit(lambda: 7)
         assert f.result(timeout=5.0) == 7
 
 
@@ -58,38 +59,45 @@ def test_pickled_wraps_none():
 
 def test_submit_and_result_int():
     with cfuture.ThreadPoolExecutor(workers=2) as pool:
-        assert pool.submit(lambda: 42).result(timeout=5.0) == 42
+        f: Future[int] = pool.submit(lambda: 42)
+        assert f.result(timeout=5.0) == 42
 
 
 def test_submit_and_result_none():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        assert pool.submit(lambda: None).result(timeout=5.0) is None
+        f: Future[None] = pool.submit(lambda: None)
+        assert f.result(timeout=5.0) is None
 
 
 def test_submit_and_result_string():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        assert pool.submit(lambda: "hello").result(timeout=5.0) == "hello"
+        f: Future[str] = pool.submit(lambda: "hello")
+        assert f.result(timeout=5.0) == "hello"
 
 
 def test_submit_and_result_bytes():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        assert pool.submit(lambda: b"\x01\x02").result(timeout=5.0) == b"\x01\x02"
+        f: Future[bytes] = pool.submit(lambda: b"\x01\x02")
+        assert f.result(timeout=5.0) == b"\x01\x02"
 
 
 def test_submit_and_result_float():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        result = pool.submit(lambda: 3.14).result(timeout=5.0)
+        f: Future[float] = pool.submit(lambda: 3.14)
+        result: float = f.result(timeout=5.0)
         assert abs(result - 3.14) < 1e-9
 
 
 def test_submit_and_result_list():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        assert pool.submit(lambda: [1, 2, 3]).result(timeout=5.0) == [1, 2, 3]
+        f: Future[list[int]] = pool.submit(lambda: [1, 2, 3])
+        assert f.result(timeout=5.0) == [1, 2, 3]
 
 
 def test_submit_and_result_dict():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        assert pool.submit(lambda: {"a": 1}).result(timeout=5.0) == {"a": 1}
+        f: Future[dict[str, int]] = pool.submit(lambda: {"a": 1})
+        assert f.result(timeout=5.0) == {"a": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -97,18 +105,18 @@ def test_submit_and_result_dict():
 # ---------------------------------------------------------------------------
 
 def test_submit_raises_on_exception():
-    def boom():
+    def boom() -> int:
         raise ValueError("oops")
 
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        f = pool.submit(boom)
+        f: Future[int] = pool.submit(boom)
         with pytest.raises(RuntimeError, match="oops"):
             f.result(timeout=5.0)
 
 
 def test_result_timeout_raises():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        f = pool.submit(_sleep_10)
+        f: Future[None] = pool.submit(_sleep_10)
         with pytest.raises(TimeoutError):
             f.result(timeout=0.05)
         pool.shutdown(wait=False)
@@ -116,16 +124,16 @@ def test_result_timeout_raises():
 
 def test_future_done_after_result():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        f = pool.submit(lambda: 1)
+        f: Future[int] = pool.submit(lambda: 1)
         f.result(timeout=5.0)
         assert f.done()
 
 
 def test_future_cancel_queued():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        blocker = pool.submit(_sleep_03)
-        queued = pool.submit(lambda: 99)
-        cancelled = queued.cancel()
+        blocker: Future[None] = pool.submit(_sleep_03)
+        queued: Future[int] = pool.submit(lambda: 99)
+        cancelled: bool = queued.cancel()
         if cancelled:
             assert queued.cancelled()
             assert queued.done()
@@ -136,24 +144,24 @@ def test_future_cancel_queued():
 
 def test_many_tasks_correct_results():
     with cfuture.ThreadPoolExecutor(workers=4) as pool:
-        futures = [pool.submit(lambda: 1) for _ in range(20)]
+        futures: list[Future[int]] = [pool.submit(lambda: 1) for _ in range(20)]
         assert all(f.result(timeout=5.0) == 1 for f in futures)
 
 
 def test_parallel_workers():
     """All workers run in parallel — measure total time."""
     with cfuture.ThreadPoolExecutor(workers=4) as pool:
-        start = time.time()
-        futures = [pool.submit(_sleep_03) for _ in range(4)]
+        start: float = time.time()
+        futures: list[Future[None]] = [pool.submit(_sleep_03) for _ in range(4)]
         for ftr in futures:
             ftr.result(timeout=5.0)
-        elapsed = time.time() - start
+        elapsed: float = time.time() - start
         assert elapsed < 1.0, f"Expected parallel execution, got {elapsed:.2f}s"
 
 
 def test_context_manager():
     with cfuture.ThreadPoolExecutor(workers=2) as pool:
-        f = pool.submit(lambda: "hello")
+        f: Future[str] = pool.submit(lambda: "hello")
         assert f.result(timeout=5.0) == "hello"
 
 
@@ -165,5 +173,5 @@ def test_non_transferable_result_raises():
 
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         with pytest.raises((ValueError, RuntimeError)):
-            f = pool.submit(lambda: Opaque())  # noqa
+            f: Future[Opaque] = pool.submit(lambda: Opaque())  # noqa
             f.result(timeout=5.0)
