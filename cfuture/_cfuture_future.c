@@ -282,8 +282,10 @@ PyObject *future_add_callback(FutureObject *self, PyObject *fn, PyObject *deps_l
                     if (!dep_obj) { deps_ok = 0; break; }
                     PyTuple_SET_ITEM(deps_tuple, i, dep_obj);
                 }
-                if (deps_ok) {
-                    PyObject *result = PyObject_CallFunctionObjArgs(cb->code, input, deps_tuple, NULL);
+                /* Build shared dict from pool (may be NULL for Future.completed etc.) */
+                PyObject *shared_dict = build_shared_dict(self->pool);
+                if (deps_ok && shared_dict) {
+                    PyObject *result = PyObject_CallFunctionObjArgs(cb->code, input, deps_tuple, shared_dict, NULL);
                     if (result) {
                         out->task->result_sv = sv_from_pyobject(result);
                         Py_DECREF(result);
@@ -303,6 +305,7 @@ PyObject *future_add_callback(FutureObject *self, PyObject *fn, PyObject *deps_l
                         out->task->failed = 1;
                     }
                 }
+                Py_XDECREF(shared_dict);
                 Py_XDECREF(deps_tuple);
                 Py_DECREF(input);
             }

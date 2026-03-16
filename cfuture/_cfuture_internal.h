@@ -163,6 +163,7 @@ PyObject *future_completed(PyObject *cls, PyObject *args);
 /* _cfuture_worker.c */
 extern PyTypeObject ThreadPoolExecutorType;
 extern PyTypeObject AllOfCallbackType;
-void fire_callbacks(Worker *w, Task *task, int is_error);
+PyObject *build_shared_dict(Pool *pool);
+void      fire_callbacks(Pool *pool, Task *task, int is_error);
 
 #endif /* CFUTURE_INTERNAL_H */

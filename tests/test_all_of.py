@@ -37,7 +37,7 @@ def test_all_of_then_chain():
     pool = cfuture.ThreadPoolExecutor(workers=2)
     f1 = pool.submit(lambda: 1)
     f2 = pool.submit(lambda: 2)
-    result_f = cfuture.all_of(f1, f2).then(lambda results, d: sum(results), deps=[])
+    result_f = cfuture.all_of(f1, f2).then(lambda results, d, s: sum(results), deps=[])
     assert result_f.result(timeout=5.0) == 3
     pool.shutdown()
 
