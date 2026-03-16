@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 
 [project.optional-dependencies]
-dev = ["pytest", "flake8", "mypy", "pre-commit"]
+dev = ["pytest", "pytest-xdist", "flake8", "mypy", "pre-commit"]
 
 [project.entry-points."flake8.extension"]
 CFU = "cfuture.lint:CfutureLintPlugin"
@@ -18,6 +18,9 @@ CFU = "cfuture.lint:CfutureLintPlugin"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["cfuture*"]
+
+[tool.pytest.ini_options]
+addopts = "-n auto"
 
 [tool.mypy]
 python_version = "3.12"

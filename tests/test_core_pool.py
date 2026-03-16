@@ -115,11 +115,11 @@ def test_submit_raises_on_exception():
 
 
 def test_result_timeout_raises():
-    with cfuture.ThreadPoolExecutor(workers=1) as pool:
-        f: Future[None] = pool.submit(_sleep_10)
-        with pytest.raises(TimeoutError):
-            f.result(timeout=0.05)
-        pool.shutdown(wait=False)
+    pool: cfuture.ThreadPoolExecutor = cfuture.ThreadPoolExecutor(workers=1)
+    f: Future[None] = pool.submit(_sleep_03)
+    with pytest.raises(TimeoutError):
+        f.result(timeout=0.01)
+    pool.shutdown(wait=False)
 
 
 def test_future_done_after_result():
