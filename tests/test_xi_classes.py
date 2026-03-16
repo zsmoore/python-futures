@@ -68,7 +68,7 @@ def test_xi_dataclass_basic_roundtrip():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         v = Vector(1.0, 2.0, 3.0)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: d[0].x + d[0].y + d[0].z,
+            lambda x, d: d[0].x + d[0].y + d[0].z,
             deps=[v],
         )
         assert abs(f.result(timeout=5.0) - 6.0) < 1e-9
@@ -90,7 +90,7 @@ def test_manual_xi_protocol():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         c = Color(255, 128, 0)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: d[0].r + d[0].g + d[0].b,
+            lambda x, d: d[0].r + d[0].g + d[0].b,
             deps=[c],
         )
         assert f.result(timeout=5.0) == 383
@@ -101,7 +101,7 @@ def test_nested_xi_dataclass():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         obj = Outer("test", 7)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: d[0].count * 2,
+            lambda x, d: d[0].count * 2,
             deps=[obj],
         )
         assert f.result(timeout=5.0) == 14
@@ -111,7 +111,7 @@ def test_xi_dataclass_with_string_fields():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         cfg = Config("localhost", 8080, False)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: f"{d[0].host}:{d[0].port}",
+            lambda x, d: f"{d[0].host}:{d[0].port}",
             deps=[cfg],
         )
         assert f.result(timeout=5.0) == "localhost:8080"
@@ -122,7 +122,7 @@ def test_xi_dataclass_custom_method_callable_in_worker():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         rect = Rectangle(3.0, 4.0)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: d[0].area(),
+            lambda x, d: d[0].area(),
             deps=[rect],
         )
         assert abs(f.result(timeout=5.0) - 12.0) < 1e-9
@@ -133,7 +133,7 @@ def test_xi_dataclass_multiple_method_calls_in_worker():
     with cfuture.ThreadPoolExecutor(workers=1) as pool:
         rect = Rectangle(3.0, 4.0)
         f = pool.submit(lambda: 0).then(
-            lambda x, d, s: d[0].area() + d[0].perimeter(),
+            lambda x, d: d[0].area() + d[0].perimeter(),
             deps=[rect],
         )
         assert abs(f.result(timeout=5.0) - 26.0) < 1e-9  # 12 + 14

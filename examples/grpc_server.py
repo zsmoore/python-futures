@@ -10,23 +10,24 @@ Key patterns demonstrated:
   - all_of to collect results from parallel futures
   - @xi_dataclass for passing structured data across interpreter boundaries
   - with pool: to guarantee shutdown even if processing raises
+  - callbacks declare only the args they need (1, 2, or 3)
 """
 
 import dataclasses
-import cfuture
+from cfuture import Future, ThreadPoolExecutor, all_of, xi_dataclass
 
 
 # ── xi-protocol types ─────────────────────────────────────────────────────────
 # Must be defined at module level so workers can resolve them via import.
 
-@cfuture.xi_dataclass
+@xi_dataclass
 @dataclasses.dataclass
 class Request:
     request_id: int
     payload: str
 
 
-@cfuture.xi_dataclass
+@xi_dataclass
 @dataclasses.dataclass
 class Response:
     request_id: int
@@ -39,13 +40,13 @@ class Response:
 def process_batch(requests: list[Request], server_config: dict) -> list[Response]:
     """Process a batch of requests in parallel worker sub-interpreters."""
 
-    with cfuture.ThreadPoolExecutor(
+    with ThreadPoolExecutor(
         workers=4,
-        shared=server_config,  # injected as `shared` in every callback
+        shared=server_config,  # injected as `s` in every callback
     ) as pool:
-        # Submit one future per request; each lambda is a plain closure-free callable.
-        futures = [
+        futures: list[Future[Response]] = [
             pool.submit(lambda: 0).then(
+                # 3-arg form: result, deps, shared — all needed here
                 lambda _, d, s: Response(
                     request_id=d[0].request_id,
                     result=f"processed:{d[0].payload}@{s['version']}",
@@ -56,9 +57,7 @@ def process_batch(requests: list[Request], server_config: dict) -> list[Response
             for req in requests
         ]
 
-        # Fan-in: wait for all futures to complete.
-        results_future = cfuture.all_of(*futures)
-        return results_future.result(timeout=30.0)
+        return all_of(*futures).result(timeout=30.0)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────

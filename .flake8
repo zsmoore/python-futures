@@ -2,3 +2,4 @@
 max-line-length = 100
 per-file-ignores =
     tests/*:CFU001
+    examples/*:CFU001
