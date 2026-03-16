@@ -16,7 +16,7 @@ from cfuture._cfuture import (  # noqa: F401
     all_of,
     pickled,
 )
-from cfuture.lint import xi_dataclass  # noqa: F401
+from cfuture._xi import xi_dataclass  # noqa: F401
 
 __all__ = [
     "Future",

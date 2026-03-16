@@ -2,6 +2,8 @@
 cfuture.lint — AST-based checker for closure captures in cfuture callbacks.
 
 CFU001: callback captures '{name}' from outer scope — pass via deps=[{name}] instead.
+CFU002: xi-protocol class '{name}' defined inside a function — move to module level
+        so the worker interpreter can resolve it via import.
 
 Ships as:
   - standalone checker: python -m cfuture.lint <file>
@@ -10,28 +12,12 @@ Ships as:
 
 import ast
 import sys
-import dataclasses
 from typing import List, Tuple, Generator
 
 
 CHECKED_METHODS = {"then", "except_", "finally_", "submit"}
 CFU001 = "CFU001 callback captures '{name}' from outer scope — pass via deps=[{name}] instead"
-
-
-def xi_dataclass(cls):
-    """Decorator that auto-implements __xi_encode__ / __xi_decode__ for dataclasses."""
-    fields = dataclasses.fields(cls)
-
-    def __xi_encode__(self):
-        return dataclasses.asdict(self)
-
-    @classmethod
-    def __xi_decode__(klass, data):
-        return klass(**data)
-
-    cls.__xi_encode__ = __xi_encode__
-    cls.__xi_decode__ = __xi_decode__
-    return cls
+CFU002 = "CFU002 xi-protocol class '{name}' defined inside a function — move to module level so the worker can resolve it"
 
 
 def _collect_names_in_expr(node: ast.expr) -> List[str]:
@@ -62,6 +48,22 @@ def _get_deps_names(call_node: ast.Call) -> set:
     return deps_names
 
 
+def _has_xi_protocol(cls_node: ast.ClassDef) -> bool:
+    """Return True if the class defines __xi_encode__ or is decorated with xi_dataclass."""
+    for decorator in cls_node.decorator_list:
+        name = None
+        if isinstance(decorator, ast.Name):
+            name = decorator.id
+        elif isinstance(decorator, ast.Attribute):
+            name = decorator.attr
+        if name == "xi_dataclass":
+            return True
+    for node in ast.walk(cls_node):
+        if isinstance(node, ast.FunctionDef) and node.name in ("__xi_encode__", "__xi_decode__"):
+            return True
+    return False
+
+
 def check_file(source: str, filename: str = "<unknown>") -> List[Tuple[int, int, str]]:
     """Return list of (line, col, message) tuples."""
     try:
@@ -71,14 +73,11 @@ def check_file(source: str, filename: str = "<unknown>") -> List[Tuple[int, int,
 
     errors = []
 
-    # Collect top-level names (builtins, imports, module-level defs)
-    # We use a simple visitor that tracks scope
+    # CFU001: closure captures in callbacks
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
 
-        # Match: something.then(...), something.except_(...), etc.
-        # or pool.submit(lambda: ...) etc.
         method_name = None
         if isinstance(node.func, ast.Attribute):
             method_name = node.func.attr
@@ -88,7 +87,6 @@ def check_file(source: str, filename: str = "<unknown>") -> List[Tuple[int, int,
         if method_name not in CHECKED_METHODS:
             continue
 
-        # Find the first positional argument (the callback)
         if not node.args:
             continue
         cb_arg = node.args[0]
@@ -98,25 +96,31 @@ def check_file(source: str, filename: str = "<unknown>") -> List[Tuple[int, int,
 
         lambda_params = _get_lambda_params(cb_arg)
         deps_names = _get_deps_names(node)
-
-        # Collect names used in lambda body
         body_names = set(_collect_names_in_expr(cb_arg.body))
-
-        # Free names = body names - lambda params - explicitly listed deps
         free_names = body_names - lambda_params - deps_names
 
-        # Filter out obviously-OK names: True, False, None, built-ins
         builtins = set(dir(__builtins__)) if isinstance(__builtins__, dict) else set(dir(__builtins__))
         builtins.update({"True", "False", "None"})
         free_names -= builtins
 
         for name in sorted(free_names):
-            errors.append((
-                cb_arg.lineno,
-                cb_arg.col_offset,
-                CFU001.format(name=name),
-            ))
+            errors.append((cb_arg.lineno, cb_arg.col_offset, CFU001.format(name=name)))
 
+    # CFU002: xi-protocol classes defined inside functions
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for child in ast.walk(node):
+            if child is node:
+                continue
+            if isinstance(child, ast.ClassDef) and _has_xi_protocol(child):
+                errors.append((
+                    child.lineno,
+                    child.col_offset,
+                    CFU002.format(name=child.name),
+                ))
+
+    errors.sort()
     return errors
 
 
