@@ -23,6 +23,10 @@ with cfuture.ThreadPoolExecutor(workers=4) as pool:
     print(f.result(timeout=5.0))   # 42
 ```
 
+> **Note:** On `main` today, `submit` takes a zero-argument callable (data
+> flows via `deps=` on `.then()`).  The `feat/stress-test` branch extends this
+> to `submit(fn, *args, **kwargs)` — see [In development](#in-development-featstress-test) below.
+
 ## API reference
 
 ### `ThreadPoolExecutor`
@@ -36,7 +40,7 @@ pool = cfuture.ThreadPoolExecutor(workers=N, shared={...})
 
 Use as a context manager (`with pool:`) to guarantee shutdown on exit.
 
-### `pool.submit(fn)`
+### `pool.submit(fn)` (current main)
 
 Submits `fn` (a zero-argument callable) to the pool. Returns a `Future`.
 
