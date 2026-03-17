@@ -1,7 +1,9 @@
 # cfuture
 
-CompletableFuture-style futures with true GIL-free parallelism via sub-interpreters.
-Requires Python 3.12+.
+CompletableFuture-style futures with true GIL-free parallelism via CPython
+sub-interpreters (PEP 554 / Python 3.12+). Each worker runs in its own
+sub-interpreter so CPU-bound tasks genuinely run in parallel without
+contending on the GIL.
 
 ## Installation
 
@@ -53,6 +55,7 @@ f.then(lambda result, deps, shared: result + deps[0], deps=[offset])
   - `result`: the value produced by the preceding step
   - `deps`: list of values passed via `deps=`
   - `shared`: dict built from the pool's `shared=` argument
+- Callback arity is flexible: `fn` may accept 1, 2, or 3 positional arguments
 - Returns a new `Future`
 
 ### `Future.except_(fn, deps=[])`
@@ -75,7 +78,7 @@ f.finally_(lambda result, deps, shared: cleanup(deps[0]), deps=[resource])
 
 Returns a new `Future`.
 
-### `cfuture.all_of(futures)`
+### `cfuture.all_of(*futures)`
 
 Returns a `Future` that resolves with a list of all results when every input
 future has completed.
@@ -182,6 +185,98 @@ CFU002 xi-protocol class 'Point' defined inside a function — move to module le
 Fires when a class decorated with `@xi_dataclass` (or implementing
 `__xi_encode__`/`__xi_decode__`) is defined inside a function.
 
+## In development (`feat/stress-test`)
+
+The following features are implemented on the `feat/stress-test` branch and
+under evaluation before merging to main.
+
+### Pythonic `submit(fn, *args, **kwargs)`
+
+```python
+def process(records, config):
+    return transform(records, config)
+
+with cfuture.ThreadPoolExecutor(workers=4) as pool:
+    f = pool.submit(process, my_records, my_config)
+    print(f.result(timeout=5.0))
+```
+
+Arguments are encoded as `SharedValue` — no pickle, no closure capture needed.
+The legacy `submit(fn)` + `.then(callback, deps=)` API remains supported.
+
+### `own_gil=True` — true GIL-free parallelism
+
+```python
+pool = cfuture.ThreadPoolExecutor(workers=4, own_gil=True)
+```
+
+Each worker gets its own GIL via `Py_NewInterpreterFromConfig`. CPU-bound
+pure-Python tasks run in genuine parallel.
+
+### Transparent C-extension fallback
+
+When `own_gil=True`, some C extension modules (e.g. `json`, `_json`) cannot
+load in sub-interpreters. cfuture detects the `ImportError` and transparently
+reroutes the task to the main interpreter:
+
+1. Worker catches the import failure (two catch points: module import and `PyObject_Call`)
+2. Task is written to `main_pipe` and picked up by the main thread
+3. A per-pool module cache (`main_only_modules`) avoids repeated failed imports
+
+This is invisible to user code — the same `pool.submit(fn, *args)` call works
+regardless of whether `fn` uses C extensions.
+
+**Benchmark results (gRPC server, JSON serialization workload, 4 workers):**
+
+| Metric | cfuture v2 (own_gil + fallback) | multiprocessing | Ratio |
+|--------|-------------------------------|-----------------|-------|
+| QPS | 68,190 | 28,347 | **2.41x** |
+| mean latency | 0.12 ms | 0.28 ms | 2.3x |
+| p99 latency | 0.35 ms | 0.95 ms | 2.7x |
+| boot time | 62 ms | 148 ms | 2.4x |
+
+Even with all tasks falling back to main (json C ext can't load in
+sub-interpreters), cfuture wins because it avoids pickle serialization
+overhead.
+
+**When fallback helps vs. hurts:**
+- Wins on C extensions that **hold the GIL** (json, protobuf) — cfuture
+  avoids pickle overhead even when running on main
+- Loses on C extensions that **release the GIL** (Rust-backed tokenizers) —
+  fallback serializes work through main, losing the parallelism the extension
+  already provides via GIL release
+
+### `pool.map(fn, iterable)`
+
+Generator-based parallel map, analogous to `concurrent.futures` map:
+
+```python
+with cfuture.ThreadPoolExecutor(workers=4) as pool:
+    results = list(pool.map(process, items))
+```
+
+### asyncio integration (`done_fd`, `main_fd`)
+
+File descriptors for zero-polling integration with asyncio event loops:
+
+```python
+loop = asyncio.get_running_loop()
+loop.add_reader(pool.done_fd, pool._drain_done_callbacks)
+loop.add_reader(pool.main_fd, pool._drain_main_tasks)
+```
+
+### Stress test suite
+
+Full gRPC benchmark infrastructure in `examples/stress_test/`:
+
+- `cfuture_server.py` — cfuture v1 (deps API) gRPC server
+- `cfuture_server_v2.py` — cfuture v2 (Pythonic submit + fallback) with `--mode json|pure`
+- `mp_server.py` — multiprocessing baseline with `--mode json|pure`
+- `asyncio_server.py` — asyncio baseline
+- `runner.py` — concurrent gRPC stress tester with QPS/latency reporting
+- `prompt_bench.py` — 1k-item HuggingFace tokenizer prompt-construction benchmark
+- `submit_bench.py` — submit API comparison (v1 deps vs v2 Pythonic vs mp)
+
 ## Testing
 
 ### Python tests
@@ -190,7 +285,7 @@ Fires when a class decorated with `@xi_dataclass` (or implementing
 python3 -m pytest tests/ -v
 ```
 
-Expected: **93 passed**.
+Expected: **142 passed** (main), **147 passed** (feat/stress-test).
 
 ### C-level Unity tests
 
@@ -212,6 +307,6 @@ Expected: **47 Tests 0 Failures 0 Ignored** (26 + 16 + 5 across the three binari
 
 ```sh
 python3 setup.py build_ext --inplace
-python3 -m pytest tests/ -v        # 93 passed
+python3 -m pytest tests/ -v        # 142 passed
 cd tests/c && make run             # 47 Tests 0 Failures 0 Ignored
 ```
